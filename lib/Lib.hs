@@ -1,12 +1,15 @@
 module Lib where
 
-import Control.Monad.RWS (MonadReader)
+import Control.Monad.RWS (MonadReader, liftIO)
 import qualified Control.Monad.Reader as R
+import Data.Aeson ((.:), (.:?))
 import qualified Data.Aeson as J
 import qualified Data.Aeson.Internal.Time as J (fromPico)
+import qualified Data.Aeson.Types as J
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy as BSL
-import Data.Csv (FromNamedRecord (parseNamedRecord), HasHeader (HasHeader, NoHeader), decode, decodeByName, encode, (.:))
+import Data.Csv (FromNamedRecord (parseNamedRecord), HasHeader (HasHeader, NoHeader), decode, decodeByName, encode)
+import Data.Function ((&))
 import Data.Functor ((<$>), (<&>))
 import Data.Maybe (fromMaybe)
 import qualified Data.Text as T
@@ -24,6 +27,7 @@ import Network.HTTP.Req
     https,
     jsonResponse,
     req,
+    responseBody,
     runReq,
     (/:),
     (=:),
@@ -57,24 +61,24 @@ pushClock clock =
   do
     ctx <- R.ask
     pure $
-      runReq defaultHttpConfig $
-        req
-          POST
-          (https (T.pack . BS.unpack $ ctxYoutrackUrl ctx) /: "api" /: "issues" /: clockIssue clock /: "timeTracking" /: "workItems")
-          ( ReqBodyJson
-              ( J.object
-                  [ ("duration", J.object [("minutes", J.toJSON @Integer $ clockDuration clock)]),
-                    ("text", J.toJSON $ clockText clock),
-                    ("date", J.toJSON @Integer (clockStart clock))
-                  ]
-              )
-          )
-          jsonResponse
-          $ mconcat
+      req
+        POST
+        (https (T.pack . BS.unpack $ ctxYoutrackUrl ctx) /: "api" /: "issues" /: clockIssue clock /: "timeTracking" /: "workItems")
+        ( ReqBodyJson
+            ( J.object
+                [ ("duration", J.object [("minutes", J.toJSON @Integer $ clockDuration clock)]),
+                  ("text", J.toJSON $ clockText clock),
+                  ("date", J.toJSON @Integer (clockStart clock))
+                ]
+            )
+        )
+        jsonResponse
+        ( mconcat
             [ header "Authorization" (BS.concat ["Bearer ", ctxToken ctx]),
               -- https://www.jetbrains.com/help/youtrack/devportal/api-query-syntax.html
               "fields" =: ("id" :: String)
             ]
+        )
 
 --  Some utilities to work with org files
 
@@ -139,12 +143,24 @@ commandSend file = do
   clocks <- (BSL.readFile file >>= processFile) <&> V.filter (\f -> clockDuration f > 0)
 
   mapM_ print clocks
-  print ("Work items to send: ", length clocks, "Press enter to send the clocks")
+
+  putStrLn $ "Work items to send: " ++ show (length clocks)
+  putStrLn "Press enter to send the clocks"
+
   _ <- getLine
 
-  print "Sending clocks..."
+  putStrLn "Sending clocks..."
+  let result =
+        ( \case
+            J.Error s -> fail s
+            J.Success s -> pure s
+        )
+      getId :: J.Value -> J.Result String = J.parse (J.withObject "no id field?" (.: "id"))
+      applyContext a = R.runReader (pushClock a) context
 
-  let applyContext a = R.runReader (pushClock a) context
-  lm <- traverse (runReq defaultHttpConfig) (V.map applyContext clocks)
-
-  mapM_ print lm
+  lm <-
+    mapM
+      (runReq defaultHttpConfig <&> (<&> R.join . (result . getId . responseBody)))
+      (V.map applyContext clocks)
+  -- lm' :: V.Vector String <- V.mapM (result . getId) lm
+  mapM_ putStrLn lm
