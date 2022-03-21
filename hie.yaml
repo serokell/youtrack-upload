@@ -1,0 +1,10 @@
+cradle:
+  cabal:
+    - path: "lib"
+      component: "lib:youtrack-upload"
+
+    - path: "app/Main.hs"
+      component: "youtrack-upload:exe:youtrack-upload-exe"
+
+    - path: "app/Paths_youtrack_upload.hs"
+      component: "youtrack-upload:exe:youtrack-upload-exe"

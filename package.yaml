@@ -1,0 +1,48 @@
+name: youtrack-upload
+dependencies:
+  - base == 4.*
+  - cassava
+  - bytestring
+  - vector
+  - text
+  - req
+  - aeson
+  - mtl
+  - time
+
+default-extensions:
+  # so u can use types from signatures inside ur function
+  - ScopedTypeVariables
+  # cause pain is eternal
+  - OverloadedStrings
+  # cause it can't reflexivity
+  - DeriveGeneric
+  # cause derive ToJson is too hard for stock haskell
+  - DeriveAnyClass
+  # cause \case (_, a) -> a
+  - LambdaCase
+  # cause it can't _ instead of a type from the box
+  - FlexibleContexts
+  # same as FlexibleContext, apparently
+  - PartialTypeSignatures
+  # so u can assist haskell type variables with @String
+  - TypeApplications
+
+executables:
+  youtrack-upload-exe:
+    source-dirs: app
+    main: Main.hs
+    default-extensions:
+      - ScopedTypeVariables
+      - OverloadedStrings
+      - DeriveGeneric
+
+    dependencies:
+      - youtrack-upload
+    ghc-options:
+      - -threaded
+      - -rtsopts
+      - -with-rtsopts=-N
+
+library:
+  source-dirs: lib
